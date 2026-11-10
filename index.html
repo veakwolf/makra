@@ -274,51 +274,51 @@ async function remote(s){
 }
 
 // ---------- settings
-// Mifflin-St Jeor BMR x activity, adjusted for the goal. Protein per kg of body weight, fat 25 % of energy, carbs the rest.
-const ACT=[[1.2,"Sedavá","kancelária, takmer bez pohybu"],[1.375,"Ľahká","šport 1–3× týždenne"],[1.55,"Stredná","šport 3–5× týždenne"],[1.725,"Vysoká","šport 6–7× týždenne"],[1.9,"Veľmi vysoká","fyzická práca + tréning"]];
-const GOAL={lose:[.8,2,"Chudnúť"],keep:[1,1.8,"Udržať váhu"],gain:[1.1,1.8,"Nabrať svaly"]};
-// With steps: sedentary base (x1.2 already covers ~3000 steps) + ~0.4 kcal per kg per 1000 extra steps.
+// You set the calories; macros follow: protein g per kg of body weight, fat a % of the calories, carbs the rest.
+// Optional: walking steps above ~3000 (normal daily movement) add ~0.4 kcal per kg per 1000 steps on top.
 const STEP_BASE=3000,STEP_KCAL=0.0004;
+let prof={sex:"m",age:null,h:null,w:null,kcal:null,pkg:1.8,fatPct:25,useSteps:false,...ls.get("profile",{})};
 function computeGoals(pr,st){
-  if(!pr.age||!pr.h||!pr.w)return null;
-  const bmr=10*pr.w+6.25*pr.h-5*pr.age+(pr.sex==="f"?-161:5), useSt=st!=null,
-    bonus=useSt?Math.max(0,st-STEP_BASE)*STEP_KCAL*pr.w:0, tdee=bmr*(useSt?1.2:pr.act)+bonus, [mul,pkg]=GOAL[pr.goal];
-  const kcal=Math.round(tdee*mul/10)*10, p=Math.round(pr.w*pkg), f=Math.round(kcal*.25/9), c=Math.max(0,Math.round((kcal-p*4-f*9)/4));
-  return {bmr:Math.round(bmr),tdee:Math.round(tdee),bonus:Math.round(bonus*mul),kcal,p,c,f};
+  if(!pr.kcal||!pr.w)return null;
+  const bonus=pr.useSteps&&st!=null?Math.round(Math.max(0,st-STEP_BASE)*STEP_KCAL*pr.w):0, kcal=pr.kcal+bonus,
+    p=Math.round(pr.w*pr.pkg), f=Math.round(kcal*pr.fatPct/100/9), c=Math.max(0,Math.round((kcal-p*4-f*9)/4));
+  return {bonus,kcal,p,c,f};
 }
-let prof=ls.get("profile",{sex:"m",age:null,h:null,w:null,act:1.375,goal:"keep"});
+const bmrOf=pr=>pr.age&&pr.h&&pr.w?Math.round(10*pr.w+6.25*pr.h-5*pr.age+(pr.sex==="f"?-161:5)):null;
+function dayGoals(d){const r=computeGoals(prof,steps[d]);return r?{kcal:r.kcal,p:r.p,c:r.c,f:r.f}:goals}
 function profileHtml(){
   const ch=(attr,val,cur,l)=>`<button class="chip ${val==cur?"on":""}" data-${attr}="${val}">${l}</button>`;
   return `<h2 style="margin-top:0">Môj profil</h2>
    <div class="chips">${ch("psex","m",prof.sex,"Muž")}${ch("psex","f",prof.sex,"Žena")}</div>
    <div class="g2" style="grid-template-columns:1fr 1fr 1fr"><div><label>Vek</label><input type="number" inputmode="numeric" id="pa" value="${prof.age??""}"></div>
    <div><label>Výška (cm)</label><input type="number" inputmode="decimal" id="ph" value="${prof.h??""}"></div><div><label>Váha (kg)</label><input type="number" inputmode="decimal" id="pw" value="${prof.w??""}"></div></div>
-   <label>Pohyb</label><div class="chips">${ch("psteps",1,prof.useSteps?1:0,"Z krokov v iPhone")}${ch("psteps",0,prof.useSteps?1:0,"Odhad")}</div>
-   ${prof.useSteps?`<p class="mut sm" style="margin:-4px 0 0">Denný cieľ sa každý deň prepočíta podľa krokov zo Zdravia. Posilňovňa a iný tréning bez krokov sa nezapočíta.${cfg.stepsKey?"":" Nižšie vlož kód pre kroky."}</p>`
-   :`<div class="chips">${ACT.map(([v,l])=>ch("pact",v,prof.act,l)).join("")}</div><p class="mut sm" style="margin:-4px 0 0">${ACT.find(a=>a[0]==prof.act)[2]}</p>`}
-   <label>Cieľ</label><div class="chips">${Object.entries(GOAL).map(([k,v])=>ch("pgoal",k,prof.goal,v[2])).join("")}</div>
+   <h2>Denný príjem</h2>
+   <label>Kalórie (kcal)</label><input type="number" inputmode="numeric" id="pkc" value="${prof.kcal??""}" placeholder="napr. 2200">
+   <div class="g2"><div><label>Bielkoviny (g na kg váhy)</label><input type="number" inputmode="decimal" id="ppk" value="${prof.pkg}"></div>
+   <div><label>Tuky (% z kalórií)</label><input type="number" inputmode="numeric" id="pfp" value="${prof.fatPct}"></div></div>
+   <label>Kroky z iPhonu</label><div class="chips">${ch("psteps",1,prof.useSteps?1:0,"Pripočítať ku kalóriám")}${ch("psteps",0,prof.useSteps?1:0,"Nepripočítavať")}</div>
    <div id="calc"></div>`;
 }
 function showCalc(){
-  const today=iso(new Date()),r=computeGoals(prof,prof.useSteps?(steps[today]??0):undefined),box=$("#calc");if(!box)return;
-  box.innerHTML=r?`<div class="card tot" style="margin-top:12px"><div class="mut sm">Bazálny metabolizmus ${r.bmr} kcal · s pohybom ${r.tdee} kcal${prof.useSteps?` · dnes ${(steps[today]??0).toLocaleString("sk-SK")} krokov (+${r.bonus} kcal)`:""}</div>
-    <div class="kc" style="margin-top:6px"><b>${r.kcal}</b><span class="mut">kcal denne</span></div>
+  const box=$("#calc");if(!box)return;
+  const today=iso(new Date()),st=steps[today],r=computeGoals(prof,st),bmr=bmrOf(prof);
+  box.innerHTML=r?`<div class="card tot" style="margin-top:12px">
+    <div class="kc"><b>${r.kcal}</b><span class="mut">kcal dnes</span></div>
+    ${prof.useSteps?`<div class="mut sm">${prof.kcal} kcal + ${r.bonus} kcal za ${(st??0).toLocaleString("sk-SK")} krokov</div>`:""}
     <div class="mac"><div>Bielkoviny<b>${r.p} g</b></div><div>Sacharidy<b>${r.c} g</b></div><div>Tuky<b>${r.f} g</b></div></div>
-    <p class="mut sm" style="margin:10px 0 0">Bielkoviny ${GOAL[prof.goal][1]} g na kg váhy, tuky 25 % energie, zvyšok sacharidy.</p>
-    ${prof.useSteps?`<p class="mut sm" style="margin:8px 0 0">Platí automaticky, každý deň podľa jeho krokov.</p></div>`:`<button class="btn w" style="margin-top:12px" data-apply-goals>Použiť ako denný cieľ</button></div>`}`
-   :`<p class="mut sm">Vyplň vek, výšku a váhu a vypočítam ti denný príjem.</p>`;
+    <p class="mut sm" style="margin:10px 0 0">Bielkoviny ${prof.pkg} g × ${prof.w} kg, tuky ${prof.fatPct} % kalórií, zvyšok sacharidy.${r.c===0?` <span style="color:var(--bad)">Na sacharidy nezostalo nič, zvýš kalórie alebo zníž bielkoviny či tuky.</span>`:""}</p>
+    ${bmr?`<p class="mut sm" style="margin:6px 0 0">Bazálny metabolizmus (spotreba v úplnom pokoji): asi ${bmr} kcal.${prof.kcal<bmr?` <span style="color:var(--bad)">Zadané kalórie sú pod ním, dlhodobo to nie je dobré.</span>`:""}</p>`:""}
+    <p class="mut sm" style="margin:6px 0 0">Ukladá sa samo a hneď platí.</p></div>`
+   :`<p class="mut sm">Zadaj váhu a kalórie a dopočítam ti bielkoviny, sacharidy a tuky.</p>`;
 }
-function wireProfile(){["#pa","#ph","#pw"].forEach(q=>$(q).oninput=readProfile);showCalc()}
-function dayGoals(d){
-  if(!prof.useSteps)return goals;
-  const r=computeGoals(prof,steps[d]??0);return r?{kcal:r.kcal,p:r.p,c:r.c,f:r.f}:goals;
+function wireProfile(){["#pa","#ph","#pw","#pkc","#ppk","#pfp"].forEach(q=>$(q).oninput=readProfile);showCalc()}
+function readProfile(){
+  prof.age=num($("#pa").value);prof.h=num($("#ph").value);prof.w=num($("#pw").value);prof.kcal=num($("#pkc").value);
+  prof.pkg=num($("#ppk").value)??1.8;prof.fatPct=Math.min(60,num($("#pfp").value)??25);ls.set("profile",prof);showCalc();
 }
-function readProfile(){prof.age=num($("#pa").value);prof.h=num($("#ph").value);prof.w=num($("#pw").value);ls.set("profile",prof);showCalc()}
 
 function settings(){
-  open(head("Nastavenia")+`<div class="in"><div id="prof">${profileHtml()}</div><h2>Denný cieľ</h2><div class="g2">
-   <div><label>Kalórie (kcal)</label><input type="number" id="gk" value="${goals.kcal}"></div><div><label>Bielkoviny (g)</label><input type="number" id="gp" value="${goals.p}"></div>
-   <div><label>Sacharidy (g)</label><input type="number" id="gc" value="${goals.c}"></div><div><label>Tuky (g)</label><input type="number" id="gf" value="${goals.f}"></div></div>
+  open(head("Nastavenia")+`<div class="in"><div id="prof">${profileHtml()}</div>
    <h2>Kroky z iPhonu</h2><label>Kód pre kroky (ten istý ako v skratke)</label><input type="password" id="sk" value="${esc(cfg.stepsKey||"")}" autocomplete="off">
    <h2>Čítanie etikiet (Gemini)</h2><label>API kľúč</label><input type="password" id="ck" value="${esc(cfg.key)}" placeholder="AIza…" autocomplete="off">
    <label>Model</label><input type="text" id="cm" value="${esc(cfg.model)}">
@@ -328,7 +328,7 @@ function settings(){
    <div style="display:flex;gap:8px"><button class="btn g" style="flex:1" data-export>Stiahnuť zálohu</button><label class="btn g" style="flex:1;margin:0;text-align:center;color:var(--txt)">Obnoviť zo zálohy<input type="file" id="imp" accept="application/json" hidden></label></div></div>`);
   wireProfile();
   $("#imp").onchange=e=>{const f=e.target.files[0];if(!f)return;f.text().then(t=>{const d=JSON.parse(t);if(!d.log||!d.products)throw 0;
-    if(!confirm("Nahradiť súčasné dáta zálohou?"))return;["products","log","goals","recent"].forEach(k=>d[k]&&ls.set(k,d[k]));location.reload()}).catch(()=>alert("Toto nie je záloha z Makrá."))};
+    if(!confirm("Nahradiť súčasné dáta zálohou?"))return;["products","log","goals","recent","profile"].forEach(k=>d[k]&&ls.set(k,d[k]));location.reload()}).catch(()=>alert("Toto nie je záloha z Makrá."))};
 }
 
 // ---------- events
@@ -349,21 +349,14 @@ document.addEventListener("click",ev=>{
   else if("photo" in d)$("#photo").click();
   else if("entry" in d){const e=log[day][+d.entry],p=products[e.key]||{name:e.name,img:e.img,per:{kcal:e.kcal/e.g*100,p:e.p/e.g*100,c:e.c/e.g*100,f:e.f/e.g*100}};showProduct(p,+d.entry)}
   else if("pick" in d){const k=d.pick;if(k.startsWith("off:")){const p=found[k.slice(4)];products[p.code]=p;ls.set("products",products);showProduct(p)}else showProduct(products[k])}
-  else if("psex" in d||"pact" in d||"pgoal" in d||"psteps" in d){
-    if("psteps" in d)prof.useSteps=d.psteps==="1";if(d.psex)prof.sex=d.psex;if(d.pact)prof.act=+d.pact;if(d.pgoal)prof.goal=d.pgoal;ls.set("profile",prof);
+  else if("psex" in d||"psteps" in d){
+    if("psteps" in d)prof.useSteps=d.psteps==="1";if(d.psex)prof.sex=d.psex;ls.set("profile",prof);
     $("#prof").innerHTML=profileHtml();wireProfile();
   }
-  else if("applyGoals" in d){
-    const r=computeGoals(prof);if(!r)return;
-    $("#gk").value=r.kcal;$("#gp").value=r.p;$("#gc").value=r.c;$("#gf").value=r.f;
-    goals={kcal:r.kcal,p:r.p,c:r.c,f:r.f};ls.set("goals",goals);t.textContent="Nastavené ✓";
-  }
   else if("saveSettings" in d){
-    const g={kcal:num($("#gk").value),p:num($("#gp").value),c:num($("#gc").value),f:num($("#gf").value)};
-    if(Object.values(g).some(v=>!v))return alert("Ciele musia byť kladné čísla.");
-    goals=g;cfg={key:$("#ck").value.trim(),model:$("#cm").value.trim()||"gemini-3.5-flash-lite",stepsKey:$("#sk").value.trim()};ls.set("goals",goals);ls.set("cfg",cfg);close();syncSteps();
+    cfg={key:$("#ck").value.trim(),model:$("#cm").value.trim()||"gemini-3.5-flash-lite",stepsKey:$("#sk").value.trim()};ls.set("cfg",cfg);close();syncSteps();
   }
-  else if("export" in d){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify({products,log,goals,recent},null,1)],{type:"application/json"}));a.download=`makra-${iso(new Date())}.json`;a.click()}
+  else if("export" in d){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify({products,log,goals,recent,profile:prof},null,1)],{type:"application/json"}));a.download=`makra-${iso(new Date())}.json`;a.click()}
 });
 $("#photo").onchange=e=>{const f=e.target.files[0];e.target.value="";if(f)readLabel(f)};
 render();syncSteps();
