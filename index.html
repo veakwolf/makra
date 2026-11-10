@@ -85,13 +85,13 @@ details{margin-top:10px}summary{color:var(--acc2);cursor:pointer;padding:6px 0}
 <script>
 "use strict";
 // ---------- storage: everything lives in this phone; optional cloud backup to your own Supabase with your secret code
-const DATA_KEYS=["products","log","goals","recent","profile","meals","water","weights"];
+const DATA_KEYS=["products","log","goals","recent","profile","meals","water","weights","bike"];
 let restoring=false;
 const ls={get(k,d){try{const v=localStorage.getItem("makra_"+k);return v?JSON.parse(v):d}catch(e){return d}},
   set(k,v){try{localStorage.setItem("makra_"+k,JSON.stringify(v))}catch(e){alert("Nepodarilo sa uložiť dáta v telefóne.")}if(DATA_KEYS.includes(k)&&!restoring)markDirty()}};
 let products=ls.get("products",{}), log=ls.get("log",{}), goals=ls.get("goals",{kcal:2200,p:150,c:220,f:70}),
     cfg={model:"gemini-3.5-flash-lite",key:"",stepsKey:"",water:8,...ls.get("cfg",{})}, recent=ls.get("recent",[]),
-    steps=ls.get("steps",{}), meals=ls.get("meals",{}), water=ls.get("water",{}), weights=ls.get("weights",{});
+    steps=ls.get("steps",{}), meals=ls.get("meals",{}), water=ls.get("water",{}), weights=ls.get("weights",{}), bike=ls.get("bike",{});
 const SUPA="https://dlbgfzjgkuwubomihkux.supabase.co",SUPA_KEY="sb_publishable_mp28D-V0T8ZAHW410MStGw_KWIFq5Dw";
 const rpc=async(fn,body)=>{const r=await fetch(`${SUPA}/rest/v1/rpc/${fn}`,{method:"POST",headers:{apikey:SUPA_KEY,"Content-Type":"application/json"},body:JSON.stringify(body)});
   const txt=await r.text(),j=txt?JSON.parse(txt):null;
@@ -153,16 +153,18 @@ async function firstSync(){
 }
 
 // ---------- day goals: your calories, macros from your weight (+ steps if enabled)
-const STEP_BASE=3000,STEP_KCAL=0.0004;
-let prof={sex:"m",age:null,h:null,w:null,kcal:null,pkg:1.8,fatPct:25,useSteps:false,...ls.get("profile",{})};
-function computeGoals(pr,st){
+const STEP_BASE=3000,STEP_KCAL=0.0004,BIKE_KCAL_PER_KM=0.225;
+let prof={sex:"m",age:null,h:null,w:null,kcal:null,pkg:1.8,fatPct:25,useSteps:false,useBike:false,...ls.get("profile",{})};
+function computeGoals(pr,st,bk){
   if(!pr.kcal||!pr.w)return null;
-  const bonus=pr.useSteps&&st!=null?Math.round(Math.max(0,st-STEP_BASE)*STEP_KCAL*pr.w):0, kcal=pr.kcal+bonus,
+  const stepBonus=pr.useSteps&&st!=null?Math.round(Math.max(0,st-STEP_BASE)*STEP_KCAL*pr.w):0;
+  const bikeBonus=pr.useBike&&bk?Math.round(bk*BIKE_KCAL_PER_KM*pr.w):0;
+  const bonus=stepBonus+bikeBonus, kcal=pr.kcal+bonus,
     p=Math.round(pr.w*pr.pkg), f=Math.round(kcal*pr.fatPct/100/9), c=Math.max(0,Math.round((kcal-p*4-f*9)/4));
-  return {bonus,kcal,p,c,f};
+  return {bonus,stepBonus,bikeBonus,kcal,p,c,f};
 }
 const bmrOf=pr=>pr.age&&pr.h&&pr.w?Math.round(10*pr.w+6.25*pr.h-5*pr.age+(pr.sex==="f"?-161:5)):null;
-function dayGoals(d){const r=computeGoals(prof,steps[d]);return r?{kcal:r.kcal,p:r.p,c:r.c,f:r.f}:goals}
+function dayGoals(d){const r=computeGoals(prof,steps[d],bike[d]);return r?{kcal:r.kcal,p:r.p,c:r.c,f:r.f}:goals}
 
 // ---------- day view
 const bar=(v,g,col)=>`<div class="bar"><i style="width:${Math.min(100,g?v/g*100:0)}%;background:${col};${v>g*1.05&&col==="var(--acc)"?"background:var(--bad)":""}"></i></div>`;
@@ -170,15 +172,17 @@ const entryRow=(e,i)=>`<div class="ent" data-entry="${i}">${e.img?`<img src="${e
 function render(){
   const today=iso(new Date()), y=addDays(today,-1);
   $("#dayT").textContent=day===today?"Dnes":day===y?"Včera":new Date(day+"T12:00").toLocaleDateString("sk-SK",{weekday:"short",day:"numeric",month:"numeric"});
-  const items=log[day]||[], t=sum(items), g=dayGoals(day), st=steps[day], left=g.kcal-t.kcal, wt=water[day]||0, prev=log[addDays(day,-1)]||[];
+  const items=log[day]||[], t=sum(items), g=dayGoals(day), st=steps[day], bk=bike[day]||0, left=g.kcal-t.kcal, wt=water[day]||0, prev=log[addDays(day,-1)]||[], bikeGoals=computeGoals(prof,st,bk);
   let h=`<div class="card tot"><div class="kc"><b>${Math.round(t.kcal)}</b><span class="mut">/ ${g.kcal} kcal</span></div>
     <div class="sm ${left<0?"":"mut"}" style="${left<0?"color:var(--bad)":""}">${left>=0?`zostáva ${Math.round(left)} kcal`:`prekročené o ${Math.round(-left)} kcal`}</div>${bar(t.kcal,g.kcal,"var(--acc)")}
-    ${cfg.stepsKey?`<div class="sm mut" style="margin-top:8px">${st!=null?`${st.toLocaleString("sk-SK")} krokov${prof.useSteps?` · cieľ podľa krokov`:""}`:"Kroky zatiaľ neprišli"}${stepsErr?` · <span style="color:var(--bad)">kroky sa nenačítali</span>`:""}</div>`:""}
+    ${cfg.stepsKey?`<div class="sm mut" style="margin-top:8px">${st!=null?`${st.toLocaleString("sk-SK")} krokov`:"Kroky zatiaľ neprišli"}${bikeGoals&&bikeGoals.bonus?` · +${bikeGoals.bonus} kcal bonus`:""}${stepsErr?` · <span style="color:var(--bad)">kroky sa nenačítali</span>`:""}</div>`:""}
     <div class="mac"><div>Bielkoviny<b>${Math.round(t.p)} <span class="mut sm">/ ${g.p} g</span></b>${bar(t.p,g.p,"var(--p)")}</div>
     <div>Sacharidy<b>${Math.round(t.c)} <span class="mut sm">/ ${g.c} g</span></b>${bar(t.c,g.c,"var(--c)")}</div>
     <div>Tuky<b>${Math.round(t.f)} <span class="mut sm">/ ${g.f} g</span></b>${bar(t.f,g.f,"var(--f)")}</div></div></div>
    <div class="card water"><div class="grow">Voda<br><span class="mut sm">${(wt*0.25).toLocaleString("sk-SK")} l z ${(cfg.water*0.25).toLocaleString("sk-SK")} l</span></div>
-    <button class="mini" data-water="-1" aria-label="Menej vody">−</button><b>${wt} / ${cfg.water}</b><button class="mini acc" data-water="1" aria-label="Pridať pohár">+</button></div>`;
+    <button class="mini" data-water="-1" aria-label="Menej vody">−</button><b>${wt} / ${cfg.water}</b><button class="mini acc" data-water="1" aria-label="Pridať pohár">+</button></div>
+   <div class="card water"><div class="grow">Bicykel<br><span class="mut sm">${bk?`${r1(bk)} km`:`žiadna jazda`}${bikeGoals&&bikeGoals.bikeBonus?` · +${bikeGoals.bikeBonus} kcal`:""}</span></div>
+    <button class="mini" data-bike="-1" aria-label="Menej km">−</button><b>${r1(bk)} km</b><button class="mini acc" data-bike="1" aria-label="Pridať cestu">+</button></div>`;
   for(const [k,l] of SECS){
     const idx=items.map((e,i)=>[e,i]).filter(([e])=>secOf(e)===k), s=sum(idx.map(x=>x[0])), py=prev.filter(e=>secOf(e)===k);
     h+=`<div class="sec"><h2>${l}</h2>${idx.length?`<span class="k">${Math.round(s.kcal)} kcal</span>`:""}
@@ -507,14 +511,15 @@ function profileHtml(){
    <div class="g2"><div><label>Bielkoviny (g na kg váhy)</label><input type="text" inputmode="decimal" id="ppk" value="${prof.pkg}"></div>
    <div><label>Tuky (% z kalórií)</label><input type="number" inputmode="numeric" id="pfp" value="${prof.fatPct}"></div></div>
    <label>Kroky z iPhonu</label><div class="chips">${ch("psteps",1,prof.useSteps?1:0,"Pripočítať ku kalóriám")}${ch("psteps",0,prof.useSteps?1:0,"Nepripočítavať")}</div>
+   <label>Bicykel (e-bike)</label><div class="chips">${ch("pbike",1,prof.useBike?1:0,"Pripočítať ku kalóriám")}${ch("pbike",0,prof.useBike?1:0,"Nepripočítavať")}</div>
    <div id="calc"></div>`;
 }
 function showCalc(){
   const box=$("#calc");if(!box)return;
-  const today=iso(new Date()),st=steps[today],r=computeGoals(prof,st),bmr=bmrOf(prof);
+  const today=iso(new Date()),st=steps[today],bk=bike[today]||0,r=computeGoals(prof,st,bk),bmr=bmrOf(prof);
   box.innerHTML=r?`<div class="card tot" style="margin-top:12px">
     <div class="kc"><b>${r.kcal}</b><span class="mut">kcal dnes</span></div>
-    ${prof.useSteps?`<div class="mut sm">${prof.kcal} kcal + ${r.bonus} kcal za ${(st??0).toLocaleString("sk-SK")} krokov</div>`:""}
+    ${r.bonus?`<div class="mut sm">${prof.kcal} kcal${r.stepBonus?` + ${r.stepBonus} za kroky`:""} ${r.bikeBonus?` + ${r.bikeBonus} za bicykel`:""}</div>`:""}
     <div class="mac"><div>Bielkoviny<b>${r.p} g</b></div><div>Sacharidy<b>${r.c} g</b></div><div>Tuky<b>${r.f} g</b></div></div>
     <p class="mut sm" style="margin:10px 0 0">Bielkoviny ${prof.pkg} g × ${prof.w} kg, tuky ${prof.fatPct} % kalórií, zvyšok sacharidy.${r.c===0?` <span style="color:var(--bad)">Na sacharidy nezostalo nič, zvýš kalórie alebo zníž bielkoviny či tuky.</span>`:""}</p>
     ${bmr?`<p class="mut sm" style="margin:6px 0 0">Bazálny metabolizmus (spotreba v úplnom pokoji): asi ${bmr} kcal.${prof.kcal<bmr?` <span style="color:var(--bad)">Zadané kalórie sú pod ním, dlhodobo to nie je dobré.</span>`:""}</p>`:""}
@@ -572,6 +577,7 @@ document.addEventListener("click",async ev=>{
   }
   else if("pick" in d){const k=d.pick;if(k.startsWith("off:")){const p=found[k.slice(4)];products[p.code]=p;ls.set("products",products);showProduct(p)}else showProduct(products[k])}
   else if("water" in d){water[day]=Math.max(0,(water[day]||0)+ +d.water);ls.set("water",water);render()}
+  else if("bike" in d){bike[day]=Math.max(0,r1((bike[day]||0)+ +d.bike*4.6));ls.set("bike",bike);render()}
   else if("copyY" in d){
     const k=d.copyY,src=(log[addDays(day,-1)]||[]).filter(e=>secOf(e)===k);sec=k;
     src.forEach((e,i)=>pushEntry({...e,t:Date.now()+i}));close();
@@ -616,8 +622,8 @@ document.addEventListener("click",async ev=>{
   }
   else if("delWeight" in d){delete weights[d.delWeight];ls.set("weights",weights);overview()}
   // settings
-  else if("psex" in d||"psteps" in d){
-    if("psteps" in d)prof.useSteps=d.psteps==="1";if(d.psex)prof.sex=d.psex;ls.set("profile",prof);
+  else if("psex" in d||"psteps" in d||"pbike" in d){
+    if("psteps" in d)prof.useSteps=d.psteps==="1";if("pbike" in d)prof.useBike=d.pbike==="1";if(d.psex)prof.sex=d.psex;ls.set("profile",prof);
     $("#prof").innerHTML=profileHtml();wireProfile();
   }
   else if("saveSettings" in d){
