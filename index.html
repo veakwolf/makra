@@ -190,13 +190,14 @@ function render(){
   if(prof.usePeptides){
     const lastDose=peptides.length?peptides[peptides.length-1]:null;
     const daysAgo=lastDose?Math.floor((new Date(day+"T12:00")-new Date(lastDose+"T12:00"))/864e5):null;
-    h+=`<div class="card water"><div class="grow">Peptidy<br><span class="mut sm">${lastDose?`posledná dávka ${daysAgo===0?"dnes":daysAgo===1?"včera":`pred ${daysAgo} dňami`}`:"žiadna dávka"}</span></div>
-      <button class="mini acc" data-peptide-dose aria-label="Zaznamenať dávku">💉</button></div>`;
+    const due=lastDose&&daysAgo>=7;
+    h+=`<div class="card water"><div class="grow">GLP-1<br><span class="mut sm">${lastDose?`${daysAgo===0?"dnes":daysAgo===1?"včera":`pred ${daysAgo} d`}${due?` · <span style="color:var(--bad)">ďalšia dávka</span>`:""}`:"žiadna dávka"}</span></div>
+      <button class="mini acc" data-peptide-dose aria-label="Zaznamenať dávku">+</button></div>`;
   }
   // supplement checklist
   if(supps.length){
     const dayLog=suppLog[day]||{};
-    h+=`<div class="sec"><h2>Doplnky</h2><button class="mini" data-supps-edit>✎</button></div><div class="card">`;
+    h+=`<div class="sec"><h2>Doplnky</h2><button class="mini" data-supps-edit>upraviť</button></div><div class="card">`;
     supps.forEach((s,i)=>{const done=!!dayLog[i];
       h+=`<div class="mrow"><button class="chk ${done?"on":""}" data-supp-check="${i}" aria-label="${s.name}"></button><div class="grow"><div class="n">${esc(s.name)}</div><div class="mut sm">${esc(s.note||"")}${s.time?` · ${s.time}`:""}</div></div></div>`;
     });
