@@ -182,7 +182,7 @@ function render(){
    <div class="card water"><div class="grow">Voda<br><span class="mut sm">${(wt*0.25).toLocaleString("sk-SK")} l z ${(cfg.water*0.25).toLocaleString("sk-SK")} l</span></div>
     <button class="mini" data-water="-1" aria-label="Menej vody">−</button><b>${wt} / ${cfg.water}</b><button class="mini acc" data-water="1" aria-label="Pridať pohár">+</button></div>
    <div class="card water"><div class="grow">Bicykel<br><span class="mut sm">${bk?`${r1(bk)} km`:`žiadna jazda`}${bikeGoals&&bikeGoals.bikeBonus?` · +${bikeGoals.bikeBonus} kcal`:""}</span></div>
-    <button class="mini" data-bike="-1" aria-label="Menej km">−</button><b>${r1(bk)} km</b><button class="mini acc" data-bike="1" aria-label="Pridať cestu">+</button></div>`;
+    ${bk?`<button class="mini" data-bike-clear aria-label="Vymazať">×</button>`:""}<button class="mini acc" data-bike-add aria-label="Pridať jazdu">+</button></div>`;
   for(const [k,l] of SECS){
     const idx=items.map((e,i)=>[e,i]).filter(([e])=>secOf(e)===k), s=sum(idx.map(x=>x[0])), py=prev.filter(e=>secOf(e)===k);
     h+=`<div class="sec"><h2>${l}</h2>${idx.length?`<span class="k">${Math.round(s.kcal)} kcal</span>`:""}
@@ -577,7 +577,8 @@ document.addEventListener("click",async ev=>{
   }
   else if("pick" in d){const k=d.pick;if(k.startsWith("off:")){const p=found[k.slice(4)];products[p.code]=p;ls.set("products",products);showProduct(p)}else showProduct(products[k])}
   else if("water" in d){water[day]=Math.max(0,(water[day]||0)+ +d.water);ls.set("water",water);render()}
-  else if("bike" in d){bike[day]=Math.max(0,r1((bike[day]||0)+ +d.bike*3.3));ls.set("bike",bike);render()}
+  else if("bikeAdd" in d){const km=prompt("Koľko km?","3.3");const v=num(km);if(v!=null&&v>0){bike[day]=r1((bike[day]||0)+v);ls.set("bike",bike);render()}}
+  else if("bikeClear" in d){bike[day]=0;ls.set("bike",bike);render()}
   else if("copyY" in d){
     const k=d.copyY,src=(log[addDays(day,-1)]||[]).filter(e=>secOf(e)===k);sec=k;
     src.forEach((e,i)=>pushEntry({...e,t:Date.now()+i}));close();
