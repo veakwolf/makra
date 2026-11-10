@@ -191,7 +191,7 @@ function render(){
     const lastDose=peptides.length?peptides[peptides.length-1]:null;
     const daysAgo=lastDose?Math.floor((new Date(day+"T12:00")-new Date(lastDose+"T12:00"))/864e5):null;
     const due=lastDose&&daysAgo>=7;
-    h+=`<div class="card water"><div class="grow">GLP-1<br><span class="mut sm">${lastDose?`${daysAgo===0?"dnes":daysAgo===1?"včera":`pred ${daysAgo} d`}${due?` · <span style="color:var(--bad)">ďalšia dávka</span>`:""}`:"žiadna dávka"}</span></div>
+    h+=`<div class="card water"><div class="grow">Peptidy<br><span class="mut sm">${lastDose?`${daysAgo===0?"dnes":daysAgo===1?"včera":`pred ${daysAgo} d`}${due?` · <span style="color:var(--bad)">ďalšia dávka</span>`:""}`:"žiadna dávka"}</span></div>
       <button class="mini acc" data-peptide-dose aria-label="Zaznamenať dávku">+</button></div>`;
   }
   // supplement checklist
