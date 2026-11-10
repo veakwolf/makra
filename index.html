@@ -85,13 +85,14 @@ details{margin-top:10px}summary{color:var(--acc2);cursor:pointer;padding:6px 0}
 <script>
 "use strict";
 // ---------- storage: everything lives in this phone; optional cloud backup to your own Supabase with your secret code
-const DATA_KEYS=["products","log","goals","recent","profile","meals","water","weights","bike"];
+const DATA_KEYS=["products","log","goals","recent","profile","meals","water","weights","bike","peptides","supps","suppLog"];
 let restoring=false;
 const ls={get(k,d){try{const v=localStorage.getItem("makra_"+k);return v?JSON.parse(v):d}catch(e){return d}},
   set(k,v){try{localStorage.setItem("makra_"+k,JSON.stringify(v))}catch(e){alert("Nepodarilo sa uložiť dáta v telefóne.")}if(DATA_KEYS.includes(k)&&!restoring)markDirty()}};
 let products=ls.get("products",{}), log=ls.get("log",{}), goals=ls.get("goals",{kcal:2200,p:150,c:220,f:70}),
     cfg={model:"gemini-3.5-flash-lite",key:"",stepsKey:"",water:8,...ls.get("cfg",{})}, recent=ls.get("recent",[]),
-    steps=ls.get("steps",{}), meals=ls.get("meals",{}), water=ls.get("water",{}), weights=ls.get("weights",{}), bike=ls.get("bike",{});
+    steps=ls.get("steps",{}), meals=ls.get("meals",{}), water=ls.get("water",{}), weights=ls.get("weights",{}), bike=ls.get("bike",{}),
+    peptides=ls.get("peptides",[]), supps=ls.get("supps",[]), suppLog=ls.get("suppLog",{});
 const SUPA="https://dlbgfzjgkuwubomihkux.supabase.co",SUPA_KEY="sb_publishable_mp28D-V0T8ZAHW410MStGw_KWIFq5Dw";
 const rpc=async(fn,body)=>{const r=await fetch(`${SUPA}/rest/v1/rpc/${fn}`,{method:"POST",headers:{apikey:SUPA_KEY,"Content-Type":"application/json"},body:JSON.stringify(body)});
   const txt=await r.text(),j=txt?JSON.parse(txt):null;
@@ -154,14 +155,16 @@ async function firstSync(){
 
 // ---------- day goals: your calories, macros from your weight (+ steps if enabled)
 const STEP_BASE=3000,STEP_KCAL=0.0004,BIKE_KCAL_PER_KM=0.225;
-let prof={sex:"m",age:null,h:null,w:null,kcal:null,pkg:1.8,fatPct:25,useSteps:false,useBike:false,...ls.get("profile",{})};
+const PEPTIDE_PKG=2.2; // g/kg protein on GLP-1 to preserve muscle
+let prof={sex:"m",age:null,h:null,w:null,kcal:null,pkg:1.8,fatPct:25,useSteps:false,useBike:false,usePeptides:false,...ls.get("profile",{})};
 function computeGoals(pr,st,bk){
   if(!pr.kcal||!pr.w)return null;
   const stepBonus=pr.useSteps&&st!=null?Math.round(Math.max(0,st-STEP_BASE)*STEP_KCAL*pr.w):0;
   const bikeBonus=pr.useBike&&bk?Math.round(bk*BIKE_KCAL_PER_KM*pr.w):0;
   const bonus=stepBonus+bikeBonus, kcal=pr.kcal+bonus,
-    p=Math.round(pr.w*pr.pkg), f=Math.round(kcal*pr.fatPct/100/9), c=Math.max(0,Math.round((kcal-p*4-f*9)/4));
-  return {bonus,stepBonus,bikeBonus,kcal,p,c,f};
+    pkg=pr.usePeptides?Math.max(pr.pkg,PEPTIDE_PKG):pr.pkg,
+    p=Math.round(pr.w*pkg), f=Math.round(kcal*pr.fatPct/100/9), c=Math.max(0,Math.round((kcal-p*4-f*9)/4));
+  return {bonus,stepBonus,bikeBonus,kcal,p,c,f,pkg};
 }
 const bmrOf=pr=>pr.age&&pr.h&&pr.w?Math.round(10*pr.w+6.25*pr.h-5*pr.age+(pr.sex==="f"?-161:5)):null;
 function dayGoals(d){const r=computeGoals(prof,steps[d],bike[d]);return r?{kcal:r.kcal,p:r.p,c:r.c,f:r.f}:goals}
@@ -183,6 +186,22 @@ function render(){
     <button class="mini" data-water="-1" aria-label="Menej vody">−</button><b>${wt} / ${cfg.water}</b><button class="mini acc" data-water="1" aria-label="Pridať pohár">+</button></div>
    <div class="card water"><div class="grow">Bicykel<br><span class="mut sm">${bk?`${r1(bk)} km`:`žiadna jazda`}${bikeGoals&&bikeGoals.bikeBonus?` · +${bikeGoals.bikeBonus} kcal`:""}</span></div>
     ${bk?`<button class="mini" data-bike-clear aria-label="Vymazať">×</button>`:""}<button class="mini acc" data-bike-add aria-label="Pridať jazdu">+</button></div>`;
+  // peptide dose tracker
+  if(prof.usePeptides){
+    const lastDose=peptides.length?peptides[peptides.length-1]:null;
+    const daysAgo=lastDose?Math.floor((new Date(day+"T12:00")-new Date(lastDose+"T12:00"))/864e5):null;
+    h+=`<div class="card water"><div class="grow">Peptidy<br><span class="mut sm">${lastDose?`posledná dávka ${daysAgo===0?"dnes":daysAgo===1?"včera":`pred ${daysAgo} dňami`}`:"žiadna dávka"}</span></div>
+      <button class="mini acc" data-peptide-dose aria-label="Zaznamenať dávku">💉</button></div>`;
+  }
+  // supplement checklist
+  if(supps.length){
+    const dayLog=suppLog[day]||{};
+    h+=`<div class="sec"><h2>Doplnky</h2><button class="mini" data-supps-edit>✎</button></div><div class="card">`;
+    supps.forEach((s,i)=>{const done=!!dayLog[i];
+      h+=`<div class="mrow"><button class="chk ${done?"on":""}" data-supp-check="${i}" aria-label="${s.name}"></button><div class="grow"><div class="n">${esc(s.name)}</div><div class="mut sm">${esc(s.note||"")}${s.time?` · ${s.time}`:""}</div></div></div>`;
+    });
+    h+=`</div>`;
+  }
   for(const [k,l] of SECS){
     const idx=items.map((e,i)=>[e,i]).filter(([e])=>secOf(e)===k), s=sum(idx.map(x=>x[0])), py=prev.filter(e=>secOf(e)===k);
     h+=`<div class="sec"><h2>${l}</h2>${idx.length?`<span class="k">${Math.round(s.kcal)} kcal</span>`:""}
@@ -495,7 +514,8 @@ function overview(){
    <div class="days">${dd.map(x=>`<div><span>${x.n?Math.round(x.t.kcal):""}</span><i class="${x.t.kcal>x.g.kcal*1.05?"over":""}" style="height:${x.t.kcal/maxK*85}%"></i>${new Date(x.d+"T12:00").toLocaleDateString("sk-SK",{weekday:"short"})}</div>`).join("")}</div>
    <div class="stat"><div>Priemer kalórií<b>${avg("kcal")} kcal</b></div><div>Priemer bielkovín<b>${avg("p")} g</b></div>
     <div>Bielkoviny splnené<b>${protDays} z ${logged.length} dní</b></div><div>Voda priemerne<b>${r1(week.reduce((a,d)=>a+(water[d]||0),0)/7*0.25)} l</b></div></div>
-   <p class="mut sm">Priemery sú z ukončených dní, kde je niečo zapísané.</p></div>`);
+   <p class="mut sm">Priemery sú z ukončených dní, kde je niečo zapísané.</p>
+   ${prof.usePeptides&&peptides.length?`<h2>Peptidy – dávky</h2><div class="card">${peptides.slice().reverse().slice(0,10).map(d=>{const ago=Math.floor((new Date(today+"T12:00")-new Date(d+"T12:00"))/864e5);return`<div class="mrow"><div class="grow">${new Date(d+"T12:00").toLocaleDateString("sk-SK",{weekday:"short",day:"numeric",month:"numeric"})}</div><span class="mut sm">${ago===0?"dnes":ago===1?"včera":`pred ${ago} dňami`}</span></div>`}).join("")}</div>`:""}</div>`);
 }
 
 // ---------- settings
@@ -512,6 +532,8 @@ function profileHtml(){
    <div><label>Tuky (% z kalórií)</label><input type="number" inputmode="numeric" id="pfp" value="${prof.fatPct}"></div></div>
    <label>Kroky z iPhonu</label><div class="chips">${ch("psteps",1,prof.useSteps?1:0,"Pripočítať ku kalóriám")}${ch("psteps",0,prof.useSteps?1:0,"Nepripočítavať")}</div>
    <label>Bicykel (e-bike)</label><div class="chips">${ch("pbike",1,prof.useBike?1:0,"Pripočítať ku kalóriám")}${ch("pbike",0,prof.useBike?1:0,"Nepripočítavať")}</div>
+   <label>Peptidy (GLP-1)</label><div class="chips">${ch("ppep",1,prof.usePeptides?1:0,"Používam (Reta / Ozempic)")}${ch("ppep",0,prof.usePeptides?1:0,"Nepoužívam")}</div>
+   ${prof.usePeptides?`<p class="mut sm" style="margin:2px 0 0">Bielkoviny automaticky min ${PEPTIDE_PKG} g/kg na ochranu svalov.</p>`:""}
    <div id="calc"></div>`;
 }
 function showCalc(){
@@ -521,7 +543,7 @@ function showCalc(){
     <div class="kc"><b>${r.kcal}</b><span class="mut">kcal dnes</span></div>
     ${r.bonus?`<div class="mut sm">${prof.kcal} kcal${r.stepBonus?` + ${r.stepBonus} za kroky`:""} ${r.bikeBonus?` + ${r.bikeBonus} za bicykel`:""}</div>`:""}
     <div class="mac"><div>Bielkoviny<b>${r.p} g</b></div><div>Sacharidy<b>${r.c} g</b></div><div>Tuky<b>${r.f} g</b></div></div>
-    <p class="mut sm" style="margin:10px 0 0">Bielkoviny ${prof.pkg} g × ${prof.w} kg, tuky ${prof.fatPct} % kalórií, zvyšok sacharidy.${r.c===0?` <span style="color:var(--bad)">Na sacharidy nezostalo nič, zvýš kalórie alebo zníž bielkoviny či tuky.</span>`:""}</p>
+    <p class="mut sm" style="margin:10px 0 0">Bielkoviny ${r.pkg} g × ${prof.w} kg${prof.usePeptides&&r.pkg>prof.pkg?" (peptidy ↑)":""}, tuky ${prof.fatPct} % kalórií, zvyšok sacharidy.${r.c===0?` <span style="color:var(--bad)">Na sacharidy nezostalo nič, zvýš kalórie alebo zníž bielkoviny či tuky.</span>`:""}</p>
     ${bmr?`<p class="mut sm" style="margin:6px 0 0">Bazálny metabolizmus (spotreba v úplnom pokoji): asi ${bmr} kcal.${prof.kcal<bmr?` <span style="color:var(--bad)">Zadané kalórie sú pod ním, dlhodobo to nie je dobré.</span>`:""}</p>`:""}
     <p class="mut sm" style="margin:6px 0 0">Ukladá sa samo a hneď platí.</p></div>`
    :`<p class="mut sm">Zadaj váhu a kalórie a dopočítam ti bielkoviny, sacharidy a tuky.</p>`;
@@ -530,6 +552,24 @@ function wireProfile(){["#pa","#ph","#pw","#pkc","#ppk","#pfp"].forEach(q=>$(q).
 function readProfile(){
   prof.age=num($("#pa").value);prof.h=num($("#ph").value);prof.w=num($("#pw").value);prof.kcal=num($("#pkc").value);
   prof.pkg=num($("#ppk").value)??1.8;prof.fatPct=Math.min(60,num($("#pfp").value)??25);ls.set("profile",prof);showCalc();
+}
+function suppsEditor(){
+  let list=[...supps];
+  const render=()=>`${list.map((s,i)=>`<div class="mrow">
+    <div class="grow"><input type="text" value="${esc(s.name)}" data-si="${i}" data-sf="name" placeholder="Názov" style="margin-bottom:4px">
+    <div class="g2"><div><input type="text" value="${esc(s.note||"")}" data-si="${i}" data-sf="note" placeholder="Dávka / poznámka"></div>
+    <div><input type="text" value="${esc(s.time||"")}" data-si="${i}" data-sf="time" placeholder="Kedy (napr. večer)"></div></div></div>
+    <button class="mini" data-del-supp="${i}" style="color:var(--bad)">×</button></div>`).join("")}
+    <button class="btn g w" data-add-supp style="margin-top:8px">+ Pridať doplnok</button>
+    <button class="btn w" data-save-supps style="margin-top:8px">Uložiť</button>`;
+  open(head("Doplnky")+`<div class="in" id="seditor">${render()}</div>`);
+  const el=$("#seditor");
+  el.addEventListener("input",e=>{const{si,sf}=e.target.dataset;if(si!=null)list[si][sf]=e.target.value});
+  el.addEventListener("click",e=>{const d=e.target.dataset;
+    if("addSupp" in d){list.push({name:"",note:"",time:""});el.innerHTML=render()}
+    else if("delSupp" in d){list.splice(+d.delSupp,1);el.innerHTML=render()}
+    else if("saveSupps" in d){supps.splice(0,supps.length,...list.filter(s=>s.name.trim()));ls.set("supps",supps);close()}
+  });
 }
 function settings(){
   const at=+localStorage.getItem("makra_backupAt")||0;
@@ -543,6 +583,9 @@ function settings(){
    <label>Model</label><input type="text" id="cm" value="${esc(cfg.model)}">
    <p class="mut sm">Kľúč ostáva len v tomto telefóne a posiela sa iba Googlu pri čítaní fotky.</p>
    <button class="btn w" style="margin-top:10px" data-save-settings>Uložiť</button>
+   <h2>Doplnky a lieky</h2>
+   <p class="mut sm">${supps.length?`${supps.length} doplnkov nastavených.`:"Žiadne doplnky. Pridaj si vitamíny, lieky alebo čokoľvek čo bereš denne."}</p>
+   <button class="btn g w" data-supps-edit>Upraviť doplnky</button>
    <h2>Záloha do súboru</h2>
    <div style="display:flex;gap:8px"><button class="btn g" style="flex:1" data-export>Stiahnuť zálohu</button><label class="btn g" style="flex:1;margin:0;text-align:center;color:var(--txt)">Obnoviť zo súboru<input type="file" id="imp" accept="application/json" hidden></label></div></div>`);
   wireProfile();
@@ -624,10 +667,17 @@ document.addEventListener("click",async ev=>{
   }
   else if("delWeight" in d){delete weights[d.delWeight];ls.set("weights",weights);overview()}
   // settings
-  else if("psex" in d||"psteps" in d||"pbike" in d){
-    if("psteps" in d)prof.useSteps=d.psteps==="1";if("pbike" in d)prof.useBike=d.pbike==="1";if(d.psex)prof.sex=d.psex;ls.set("profile",prof);
+  else if("psex" in d||"psteps" in d||"pbike" in d||"ppep" in d){
+    if("psteps" in d)prof.useSteps=d.psteps==="1";if("pbike" in d)prof.useBike=d.pbike==="1";if("ppep" in d)prof.usePeptides=d.ppep==="1";if(d.psex)prof.sex=d.psex;ls.set("profile",prof);
     $("#prof").innerHTML=profileHtml();wireProfile();
   }
+  else if("peptideDose" in d){
+    peptides.push(day);ls.set("peptides",peptides);render();
+  }
+  else if("suppCheck" in d){
+    const dl=suppLog[day]=suppLog[day]||{}, i=d.suppCheck;dl[i]=!dl[i];if(!dl[i])delete dl[i];ls.set("suppLog",suppLog);render();
+  }
+  else if("suppsEdit" in d){suppsEditor()}
   else if("saveSettings" in d){
     const newKey=$("#sk").value.trim(),changed=newKey!==cfg.stepsKey;
     cfg={...cfg,key:$("#ck").value.trim(),model:$("#cm").value.trim()||"gemini-3.5-flash-lite",stepsKey:newKey,water:Math.max(1,Math.round(num($("#wg").value)||8))};ls.set("cfg",cfg);
