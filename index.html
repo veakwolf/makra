@@ -175,7 +175,7 @@ function render(){
   const items=log[day]||[], t=sum(items), g=dayGoals(day), st=steps[day], bk=bike[day]||0, left=g.kcal-t.kcal, wt=water[day]||0, prev=log[addDays(day,-1)]||[], bikeGoals=computeGoals(prof,st,bk);
   let h=`<div class="card tot"><div class="kc"><b>${Math.round(t.kcal)}</b><span class="mut">/ ${g.kcal} kcal</span></div>
     <div class="sm ${left<0?"":"mut"}" style="${left<0?"color:var(--bad)":""}">${left>=0?`zostáva ${Math.round(left)} kcal`:`prekročené o ${Math.round(-left)} kcal`}</div>${bar(t.kcal,g.kcal,"var(--acc)")}
-    ${cfg.stepsKey?`<div class="sm mut" style="margin-top:8px">${st!=null?`${st.toLocaleString("sk-SK")} krokov`:"Kroky zatiaľ neprišli"}${bikeGoals&&bikeGoals.bonus?` · +${bikeGoals.bonus} kcal bonus`:""} · <a href="shortcuts://run-shortcut?name=Makr%C3%A1%20kroky" style="color:var(--acc2);text-decoration:none" data-sync-steps>sync</a>${stepsErr?` · <span style="color:var(--bad)">chyba</span>`:""}</div>`:""}
+    ${cfg.stepsKey?`<div class="sm mut" style="margin-top:8px">${st!=null?`${st.toLocaleString("sk-SK")} krokov`:"Kroky zatiaľ neprišli"}${bikeGoals&&bikeGoals.bonus?` · +${bikeGoals.bonus} kcal bonus`:""} · <a href="shortcuts://run-shortcut?name=Makr%C3%A1%20kroky" style="color:var(--acc2);text-decoration:none">sync</a> · <button style="background:none;border:0;color:var(--acc2);font:inherit;font-size:inherit;padding:0;cursor:pointer" data-refresh-steps>obnoviť</button>${stepsErr?` · <span style="color:var(--bad)">${esc(stepsErr)}</span>`:""}</div>`:""}
     <div class="mac"><div>Bielkoviny<b>${Math.round(t.p)} <span class="mut sm">/ ${g.p} g</span></b>${bar(t.p,g.p,"var(--p)")}</div>
     <div>Sacharidy<b>${Math.round(t.c)} <span class="mut sm">/ ${g.c} g</span></b>${bar(t.c,g.c,"var(--c)")}</div>
     <div>Tuky<b>${Math.round(t.f)} <span class="mut sm">/ ${g.f} g</span></b>${bar(t.f,g.f,"var(--f)")}</div></div></div>
@@ -577,6 +577,7 @@ document.addEventListener("click",async ev=>{
   }
   else if("pick" in d){const k=d.pick;if(k.startsWith("off:")){const p=found[k.slice(4)];products[p.code]=p;ls.set("products",products);showProduct(p)}else showProduct(products[k])}
   else if("water" in d){water[day]=Math.max(0,(water[day]||0)+ +d.water);ls.set("water",water);render()}
+  else if("refreshSteps" in d){syncSteps()}
   else if("bikeAdd" in d){const km=prompt("Koľko km?","3.3");const v=num(km);if(v!=null&&v>0){bike[day]=r1((bike[day]||0)+v);ls.set("bike",bike);render()}}
   else if("bikeClear" in d){bike[day]=0;ls.set("bike",bike);render()}
   else if("copyY" in d){
