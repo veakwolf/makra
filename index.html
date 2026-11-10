@@ -466,10 +466,14 @@ async function remote(s){
   s=s.trim();if(s.length<3)return;const box=$("#rres");if(!box)return;
   box.innerHTML=`<p class="mut"><span class="spin"></span>Hľadám v Open Food Facts…</p>`;
   try{
-    const r=await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(s)}&search_simple=1&action=process&json=1&page_size=25&sort_by=unique_scans_n&fields=code,product_name,product_name_sk,product_name_cs,generic_name,brands,product_quantity,serving_quantity,nutriments,ingredients_text_sk,ingredients_text_cs,ingredients_text,allergens_tags,image_front_small_url`);
-    if(!r.ok)throw new Error("HTTP "+r.status);
-    const j=await r.json();if($("#q")?.value.trim()!==s)return;
-    const list=(j.products||[]).map(o=>fromOFF(o,o.code)).filter(p=>p.name&&p.per.kcal!=null&&validCode(p.code||""));
+    const F="code,product_name,product_name_sk,product_name_cs,generic_name,brands,product_quantity,serving_quantity,nutriments,ingredients_text_sk,ingredients_text_cs,ingredients_text,allergens_tags,image_front_small_url",q=encodeURIComponent(s);
+    let prods;
+    try{const r=await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${q}&search_simple=1&action=process&json=1&page_size=25&sort_by=unique_scans_n&fields=${F}`);
+      if(!r.ok)throw new Error("HTTP "+r.status);prods=(await r.json()).products}
+    catch(e){const r=await fetch(`https://search.openfoodfacts.org/search?q=${q}&page_size=25&fields=${F}`);
+      if(!r.ok)throw new Error("HTTP "+r.status);prods=(await r.json()).hits}
+    if($("#q")?.value.trim()!==s)return;
+    const list=(prods||[]).map(o=>fromOFF(o,o.code)).filter(p=>p.name&&p.per.kcal!=null&&validCode(p.code||""));
     found=Object.fromEntries(list.map(p=>[p.code,p]));
     box.innerHTML=list.length?`<h2>Open Food Facts</h2><div class="card">${list.map(p=>row("off:"+p.code,p)).join("")}</div>`:`<p class="mut">V databáze nič. Pridaj produkt cez „Nový produkt“.</p>`;
   }catch(e){box.innerHTML=`<div class="msg err">Vyhľadávanie nefunguje (${esc(e.message)}).</div>`}
