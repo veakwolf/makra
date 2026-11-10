@@ -467,11 +467,15 @@ async function remote(s){
   box.innerHTML=`<p class="mut"><span class="spin"></span>Hľadám v Open Food Facts…</p>`;
   try{
     const F="code,product_name,product_name_sk,product_name_cs,generic_name,brands,product_quantity,serving_quantity,nutriments,ingredients_text_sk,ingredients_text_cs,ingredients_text,allergens_tags,image_front_small_url",q=encodeURIComponent(s);
-    let prods;
-    try{const r=await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${q}&search_simple=1&action=process&json=1&page_size=25&sort_by=unique_scans_n&fields=${F}`);
-      if(!r.ok)throw new Error("HTTP "+r.status);prods=(await r.json()).products}
-    catch(e){const r=await fetch(`https://search.openfoodfacts.org/search?q=${q}&page_size=25&fields=${F}`);
-      if(!r.ok)throw new Error("HTTP "+r.status);prods=(await r.json()).hits}
+    let prods,err;
+    for(let i=0;i<6&&!prods;i++){
+      if(i)await new Promise(r=>setTimeout(r,800*i));
+      if($("#q")?.value.trim()!==s)return;
+      try{const r=await fetch(`https://world.openfoodfacts.${i%2?"net":"org"}/cgi/search.pl?search_terms=${q}&search_simple=1&action=process&json=1&page_size=25&sort_by=unique_scans_n&fields=${F}`);
+        if(!r.ok)throw new Error("HTTP "+r.status);prods=(await r.json()).products||[]}
+      catch(e){err=e}
+    }
+    if(!prods)throw err;
     if($("#q")?.value.trim()!==s)return;
     const list=(prods||[]).map(o=>fromOFF(o,o.code)).filter(p=>p.name&&p.per.kcal!=null&&validCode(p.code||""));
     found=Object.fromEntries(list.map(p=>[p.code,p]));
