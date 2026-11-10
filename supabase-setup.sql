@@ -64,3 +64,7 @@ grant execute on function makra_put_steps(text, text, integer) to anon;
 grant execute on function makra_get_steps(text, text) to anon;
 grant execute on function makra_backup_save(text, jsonb) to anon;
 grant execute on function makra_backup_load(text) to anon;
+
+-- Tabuľky sú prístupné len cez funkcie vyššie (security definer), nie priamo cez API
+alter table makra_steps enable row level security;
+alter table makra_backup enable row level security;
