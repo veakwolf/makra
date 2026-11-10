@@ -68,3 +68,16 @@ grant execute on function makra_backup_load(text) to anon;
 -- Tabuľky sú prístupné len cez funkcie vyššie (security definer), nie priamo cez API
 alter table makra_steps enable row level security;
 alter table makra_backup enable row level security;
+
+-- Pripomienka doplnkov: počet neodškrtnutých doplnkov v daný deň (zo zálohy), volá skratka o 20:00
+create or replace function makra_supps_pending(secret text, day text)
+returns integer language plpgsql security definer as $$
+declare d jsonb; n integer;
+begin
+  if encode(digest(secret, 'sha256'), 'hex') <> 'f58ae899ef154c5cb80d46f976e3676e8137821e211216b1c3099ee4db4bf2f0' then raise exception 'zly kod'; end if;
+  select b.data into d from makra_backup b order by b.updated_at desc limit 1;
+  select count(*) into n from jsonb_array_elements(coalesce(d->'supps','[]'::jsonb)) with ordinality e(v,i)
+    where coalesce(d->'suppLog'->day->>((i-1)::text),'false') <> 'true';
+  return n;
+end $$;
+grant execute on function makra_supps_pending(text, text) to anon;
