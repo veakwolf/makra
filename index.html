@@ -577,7 +577,7 @@ document.addEventListener("click",async ev=>{
   }
   else if("pick" in d){const k=d.pick;if(k.startsWith("off:")){const p=found[k.slice(4)];products[p.code]=p;ls.set("products",products);showProduct(p)}else showProduct(products[k])}
   else if("water" in d){water[day]=Math.max(0,(water[day]||0)+ +d.water);ls.set("water",water);render()}
-  else if("bike" in d){bike[day]=Math.max(0,r1((bike[day]||0)+ +d.bike*4.6));ls.set("bike",bike);render()}
+  else if("bike" in d){bike[day]=Math.max(0,r1((bike[day]||0)+ +d.bike*3.3));ls.set("bike",bike);render()}
   else if("copyY" in d){
     const k=d.copyY,src=(log[addDays(day,-1)]||[]).filter(e=>secOf(e)===k);sec=k;
     src.forEach((e,i)=>pushEntry({...e,t:Date.now()+i}));close();
